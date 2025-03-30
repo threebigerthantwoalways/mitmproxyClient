@@ -396,6 +396,7 @@ class MainWindow(QtWidgets.QMainWindow):
         if self.intercept_button.text() == "开始拦截":
             self.init_globalConfig()
             try:
+                self.intercept_install_certificate_button.hide()
                 # 启动 Redis 线程
                 from traffic.all_process_thread import redisProcessThread
                 self.intercept_redis_thread = redisProcessThread()
@@ -433,6 +434,7 @@ class MainWindow(QtWidgets.QMainWindow):
             else:
                 self.message_display.append("没有抓包功能启动!!!")
             self.intercept_button.setText("开始拦截")
+            self.intercept_install_certificate_button.show()
 
 
     # 获得流量,单独抓包功能启动
