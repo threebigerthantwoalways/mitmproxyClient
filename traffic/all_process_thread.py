@@ -183,7 +183,60 @@ class redisListenerThread(QThread):
 
 
 
+class installCertificateThread(QThread):
+    normal_signal = Signal(str)  #
+    error_signal = Signal(str)  #
 
+    def __init__(self, redis_port):
+        super().__init__()
+        self.parent_conn, self.child_conn = Pipe()
+        self.listener_traffic_process = None  # 存储
+        self.redis_port = redis_port
+
+
+    def run(self):
+        try:
+            from traffic.install_certificate import start_traffic
+            self.normal_signal.emit("证书安装功能启动, 请通过浏览器访问 http://mitm.it")
+            # 启动 mitmproxy 子进程
+            self.listener_traffic_process = Process(target=start_traffic)
+            self.listener_traffic_process.start()
+            # 检查进程是否正常启动
+            if not self.listener_traffic_process.is_alive():
+                print("证书安装功能启动失败")
+                self.error_signal.emit("证书安装功能启动失败")
+        except Exception as e:
+            self.error_signal.emit(f"证书安装功能启动出错: {e}")
+            print(f"证书安装功能启动出错: {e}")
+
+    # 关闭抓包进程
+    def stop(self):
+        """停止抓包进程"""
+        if self.listener_traffic_process and self.listener_traffic_process.is_alive():
+            try:
+                import psutil
+                parent = psutil.Process(self.listener_traffic_process.pid)
+                for child in parent.children(recursive=True):
+                    child.terminate()  # 先尝试终止子进程
+                parent.terminate()  # 终止主进程
+
+                # 等待最多 3 秒
+                parent.wait(timeout=3)
+
+                # 如果还没退出，强制 kill
+                if parent.is_running():
+                    print("进程未退出，尝试 kill")
+                    for child in parent.children(recursive=True):
+                        child.kill()
+                    parent.kill()
+
+                self.normal_signal.emit("证书安装功能进程及其子进程已全部关闭")
+            except psutil.NoSuchProcess:
+                self.error_signal.emit(f"进程 PID {self.listener_traffic_process.pid} 不存在，可能已经终止")
+            except Exception as e:
+                self.error_signal.emit(f"关闭证书安装功能进程出错: {e}")
+            finally:
+                self.listener_traffic_process = None
 
 
 

@@ -128,6 +128,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.intercept_redis_listener_thread = None
         # 抓包功能,将报文显示在UI界面
         self.capture_traffic_thread = None
+        # 安装证书启动线程
+        self.install_certificate_thread = None
 
 
     def initUI(self):
@@ -202,11 +204,18 @@ class MainWindow(QtWidgets.QMainWindow):
             confirm_callback=self.run_shell_command_unset_proxy
         ))
 
+        # 预先设置代理, 目的为了安装mitmproxy证书
+        self.intercept_install_certificate_button = QtWidgets.QPushButton("请设置代理安装证书")
+        self.intercept_install_certificate_button.setFixedWidth(200)
+        self.intercept_install_certificate_button.setFixedHeight(40)
+        self.intercept_install_certificate_button.clicked.connect(self.install_certificate)
+
         buttons_layout = QtWidgets.QHBoxLayout()
         buttons_layout.addWidget(self.intercept_button)
         buttons_layout.addWidget(self.allow_button)
         buttons_layout.addWidget(self.intercept_set_proxy_button)
         buttons_layout.addWidget(self.intercept_unset_proxy_button)
+        buttons_layout.addWidget(self.intercept_install_certificate_button)
         buttons_layout.setAlignment(QtCore.Qt.AlignLeft)  # 靠左对齐
         capture_single_layout.addWidget(self.current_label)
         capture_single_layout.addLayout(buttons_layout)
@@ -426,6 +435,40 @@ class MainWindow(QtWidgets.QMainWindow):
             self.intercept_button.setText("开始拦截")
 
 
+    # 获得流量,单独抓包功能启动
+    def install_certificate(self):
+        """开始拦截/恢复按钮逻辑"""
+        if self.intercept_install_certificate_button.text() == "请设置代理安装证书":
+            self.init_globalConfig()
+            try:
+                self.intercept_button.hide()
+                self.allow_button.hide()
+                # 启动抓包线程
+                from traffic.all_process_thread import installCertificateThread
+                self.install_certificate_thread = installCertificateThread(self.intercept_redis_port)
+                self.install_certificate_thread.normal_signal.connect(self.on_run_capture_traffic)
+                self.install_certificate_thread.error_signal.connect(self.on_run_capture_traffic_error)
+                self.install_certificate_thread.start()
+                # 修改按键文字
+                self.intercept_install_certificate_button.setText("取消证书安装")
+                # self.intercept_button.setStyleSheet("background-color: gray;")
+            except Exception as e:
+                print("执行过程中出错:", e)
+                self.message_display.append(f'启动抓包功能出错 : {e}')
+        else:
+            self.message_display.clear()
+            if self.install_certificate_thread:
+                self.install_certificate_thread.stop()  # 调用自定义线程的 stop 方法
+                self.install_certificate_thread.quit()  # 停止线程的事件循环
+                QTimer.singleShot(5000, self.install_certificate_thread.wait)  # 5 秒后检查线程状态
+                self.install_certificate_thread = None
+                self.append_output_capture("证书安装功能已经停止")
+            else:
+                self.message_display.append("没有证书安装功能启动!!!")
+            self.intercept_install_certificate_button.setText("请设置代理安装证书")
+            self.intercept_button.show()
+            self.allow_button.show()
+
 
     # 点击单独的抓包功能, 生成一个线程, 线程通过信号槽, 启动一个抓包进程。这个方法就是更新启动进程中的正常信息
     def on_run_capture_traffic(self, msg):
@@ -622,6 +665,7 @@ class MainWindow(QtWidgets.QMainWindow):
         close_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         # with open("close_time.log", "a") as log_file:
         #     log_file.write(f"Application closed at: {close_time}\n")
+        self.run_shell_command_unset_proxy()
         print(f"Application closed at: {close_time}")
         super().closeEvent(event)
 
